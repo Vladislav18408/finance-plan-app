@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- In-app texts live in ui/Strings.kt so the language can be switched inside the app. -->
+    <string name="app_name">Finance Plan</string>
+</resources>
