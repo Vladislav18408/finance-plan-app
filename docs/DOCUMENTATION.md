@@ -4,7 +4,8 @@
 
 Finance Plan is a single-activity Android app written in Kotlin with Jetpack Compose (Material 3).
 It has no server, no account and no network permission: all data is stored in one JSON file in the
-app's private storage. The app ships with **no data** – the user enters everything.
+app's private storage. The app ships with **no personal data**: on first start it creates
+35 predefined categories (no amounts); the user enters income, plan, expenses and goals.
 
 | Item | Value |
 |---|---|
@@ -30,9 +31,11 @@ Finance App/
       └─ java/com/vladk/financeplan/
          ├─ MainActivity.kt                 Entry point; hosts the Compose UI
          ├─ data/
-         │  ├─ Models.kt                    Data classes saved to disk
-         │  ├─ Repository.kt                Loads/saves the JSON file, exposes a StateFlow
-         │  └─ Calc.kt                      All budget formulas (pure functions)
+         │  ├─ Models.kt                    Data classes saved to disk (incl. Group enum)
+         │  ├─ Presets.kt                   The 35 predefined categories (BG + EN names)
+         │  ├─ Repository.kt                Loads/saves the JSON file, seeds presets, exposes a StateFlow
+         │  ├─ Calc.kt                      Budget formulas (pure functions)
+         │  └─ Reports.kt                   Weekly / monthly / trend report formulas
          └─ ui/
             ├─ FinanceApp.kt                Scaffold, bottom navigation, which dialog is open
             ├─ FinanceViewModel.kt          One function per user action (save/delete …)
@@ -41,7 +44,8 @@ Finance App/
             ├─ theme/Theme.kt               Colors (light + dark), color per kind
             ├─ components/Components.kt     Cards, progress bar, status chip, rows, inputs
             ├─ components/Editors.kt        Add/edit dialogs (expense, category, income, goals)
-            └─ screens/                     Overview, Expenses, Budget, Goals, Settings
+            ├─ components/Charts.kt         Canvas charts: bars, donut, line, stacked bar, legend
+            └─ screens/                     Overview, Expenses, Reports, Budget, Goals, Settings
 ```
 
 ## 3. Architecture
@@ -70,17 +74,25 @@ Compose screens ──(user action)──► FinanceViewModel ──► Reposito
 AppData(
   version, settings: Settings(language = "bg" | "en", currency = "€"),
   income: Income(salary, vouchers, investSharePercent, extras: List<ExtraIncome(id, name, amount)>),
-  categories: List<Category(id, name, kind, planType, amount, percent, minusVouchers, note)>,
+  categories: List<Category(id, name, kind, planType, amount, percent, minusVouchers, note,
+                            group, icon, presetId)>,
   expenses:   List<Expense(id, categoryId, amount, date = "yyyy-MM-dd", note)>,
   goals:      List<Goal(id, name, target, saved, monthly, note)>,
   emergency:  EmergencyFund(months, saved, monthly),
   investing:  Investing(age, annualReturnPercent),
+  presetsVersion,          // 0 = predefined categories not added yet
 )
 ```
 
 - `Kind` = `NEEDS`, `WANTS`, `SAVINGS`, `INVESTMENTS`. Savings and investments together are the
   "savings" part of the 50/30/20 rule (`Kind.isSaving`).
 - `PlanType` = `FIXED` (use `amount`) or `PERCENT` (use `percent` of the salary).
+- `Group` = `HOUSING`, `FOOD`, `TRANSPORT`, `HEALTH`, `EDUCATION`, `LIFESTYLE`, `IRREGULAR`, `OTHER`,
+  `SAVINGS`, `INVESTMENTS` – each with an emoji and a default `Kind`. Groups organise the budget
+  and give each category its chart colour.
+- Predefined categories have `presetId` and an **empty `name`**, so their name follows the app
+  language (`Category.label(lang)` in `Presets.kt`). Renaming one stores the new name. Their ids are
+  stable (`preset-<id>`), so backups and re-added presets match.
 - Percentages are stored as human numbers (12.5 means 12.5%).
 - Expenses are kept for all months; a month is selected by the `yyyy-MM` prefix of `date`.
 - Deleting a category also deletes its expenses.
@@ -106,9 +118,41 @@ These match the formulas of the original *Finance Plan BG* spreadsheet.
 | Months to goal | `ceil((target − saved) / monthly)`; "n/a" if monthly is 0 | Цели!B11, G15 |
 | Investing projection | `FV = m × ((1 + r)^n − 1) / r`, `r = annual% / 12`, `n = years × 12` | Цели!D29: `FV(r/12, n×12, −m)` |
 
+### Reports (`data/Reports.kt`)
+
+"Spending" = expenses in *Needs* / *Wants* categories; expenses in *Savings* / *Investments*
+categories are counted as "saved".
+
+| Value | Formula |
+|---|---|
+| Week | Monday to Sunday: `weekStart(d) = d.with(previousOrSame(MONDAY))` |
+| Weekly guide | planned needs + wants per month × 12 / 52 (a month ≈ 4.33 weeks, like Monarch's weekly flex) |
+| Daily guide | weekly guide / 7 (dashed line in the daily bar chart) |
+| Week vs. week before | spending this week − spending in the previous Monday–Sunday |
+| Daily average | week spending / days elapsed (7 for past weeks) |
+| Spending through the month | running total per day; stops at today for the current month |
+| Plan line | planned spending × day / days in month |
+| Cash flow | income (salary + extra incomes) → spent, saved, left = income − spent − saved |
+| Trends | spending and saved for the last 6 months; averages start at the first month with data |
+
 Amount input (`Calc.parseAmount`) accepts `12,50`, `12.50`, `1 250` and sums like `4,40+7,10`.
 
-## 6. Building
+## 6. Charts (`ui/components/Charts.kt`)
+
+All charts are drawn with Compose `Canvas` (no chart library):
+
+- `BarChart` – daily (Mon–Sun) and monthly bars; tap a bar to select it; optional dashed guide line.
+- `DonutChart` – spending by group; tap a slice to see it in the centre.
+- `LineChart` – cumulative spending: this month, last month, plan; tap or drag for a read-out.
+- `StackedBar`, `Legend`, `BarRow` – cash flow / 50-30-20 split and ranked category lists.
+
+They follow one set of rules: a fixed, colour-blind-checked categorical palette (blue, orange,
+aqua, yellow, magenta, green, violet, red) with separate light and dark steps (`Theme.kt`); every
+group keeps the same colour everywhere; thin marks, 4dp rounded bar ends, 2dp gaps between
+segments, hairline grid, muted axis text; a legend whenever there is more than one series; one
+value label at a time; status shown with icon + text, never colour alone.
+
+## 7. Building
 
 Requirements: Android Studio (it bundles the JDK and SDK manager). The project uses the Gradle wrapper,
 so no separate Gradle install is needed.
@@ -124,15 +168,14 @@ For a release build that can be shared, create a signing key in Android Studio
 (*Build → Generate Signed App Bundle / APK*). Never commit `*.jks` / `*.keystore` files
 (they are in `.gitignore`).
 
-## 7. Privacy
+## 8. Privacy
 
 - No internet permission, no analytics, no accounts.
 - Data: `/data/data/com.vladk.financeplan/files/finance-data.json` (private to the app).
 - Backup files contain all personal figures; they are ignored by git (`*-backup*.json`).
 
-## 8. Ideas for later
+## 9. Ideas for later
 
 - Per-month income (when the salary differs from month to month).
-- Charts of spending over several months.
 - CSV export for Excel.
 - Home-screen widget for adding an expense in one tap.

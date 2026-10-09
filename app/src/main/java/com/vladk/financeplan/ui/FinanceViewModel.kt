@@ -9,6 +9,7 @@ import com.vladk.financeplan.data.Expense
 import com.vladk.financeplan.data.Goal
 import com.vladk.financeplan.data.Income
 import com.vladk.financeplan.data.Investing
+import com.vladk.financeplan.data.Presets
 import com.vladk.financeplan.data.Repository
 import kotlinx.coroutines.flow.StateFlow
 
@@ -58,6 +59,16 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
         false
     }
 
-    /** Wipes everything except the language and currency choice. */
-    fun deleteAll() = repo.update { AppData(settings = it.settings) }
+    /** Adds the predefined categories the user does not have (e.g. after deleting some). */
+    fun addMissingPresets() = repo.update { d ->
+        d.copy(
+            categories = d.categories + Presets.missing(d.categories).map(Presets::toCategory),
+            presetsVersion = Presets.VERSION,
+        )
+    }
+
+    /** Wipes everything except the language and currency choice; the predefined categories come back. */
+    fun deleteAll() = repo.update {
+        AppData(settings = it.settings, categories = Presets.defaults(), presetsVersion = Presets.VERSION)
+    }
 }

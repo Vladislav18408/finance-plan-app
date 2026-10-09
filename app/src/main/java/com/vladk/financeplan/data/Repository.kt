@@ -43,12 +43,20 @@ class Repository(context: Context) {
     /** Parses a backup. Throws if the text is not a valid backup. */
     fun parseBackup(text: String): AppData = json.decodeFromString(AppData.serializer(), text)
 
-    private fun load(): AppData = try {
-        if (file.exists()) json.decodeFromString(AppData.serializer(), file.readText()) else AppData()
-    } catch (e: Exception) {
-        // Keep the unreadable file aside instead of overwriting it.
-        file.copyTo(File(file.parentFile, "finance-data.broken.json"), overwrite = true)
-        AppData()
+    private fun load(): AppData {
+        val loaded = try {
+            if (file.exists()) json.decodeFromString(AppData.serializer(), file.readText()) else AppData()
+        } catch (e: Exception) {
+            // Keep the unreadable file aside instead of overwriting it.
+            file.copyTo(File(file.parentFile, "finance-data.broken.json"), overwrite = true)
+            AppData()
+        }
+        // First start: add the predefined categories (with no amounts – the user fills them in).
+        return if (loaded.presetsVersion == 0 && loaded.categories.isEmpty()) {
+            loaded.copy(categories = Presets.defaults(), presetsVersion = Presets.VERSION)
+        } else {
+            loaded
+        }
     }
 
     private fun persist(value: AppData) {

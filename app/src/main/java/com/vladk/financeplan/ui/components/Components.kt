@@ -41,8 +41,14 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.vladk.financeplan.data.Category
+import com.vladk.financeplan.data.Group
 import com.vladk.financeplan.data.Kind
 import com.vladk.financeplan.data.Status
+import com.vladk.financeplan.data.emoji
+import com.vladk.financeplan.data.label
+import com.vladk.financeplan.ui.theme.groupColor
 import com.vladk.financeplan.ui.LocalFmt
 import com.vladk.financeplan.ui.LocalStrings
 import com.vladk.financeplan.ui.theme.badColor
@@ -272,6 +278,30 @@ fun ConfirmDialog(title: String, text: String, confirmLabel: String, onConfirm: 
         dismissButton = { TextButton(onClick = onDismiss) { Text(s.cancel) } },
     )
 }
+
+/** Category emoji on a soft circle tinted with the group colour. */
+@Composable
+fun EmojiAvatar(emoji: String, color: Color, size: Int = 36) {
+    Box(
+        Modifier
+            .size(size.dp)
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.16f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(emoji, fontSize = (size * 0.48f).sp)
+    }
+}
+
+@Composable
+fun CategoryAvatar(category: Category?, size: Int = 36) {
+    EmojiAvatar(category?.emoji() ?: "❔", groupColor(category?.group ?: Group.OTHER), size)
+}
+
+/** Category name in the app's current language. */
+@Composable
+fun Category?.title(): String =
+    this?.label(LocalStrings.current.code)?.ifBlank { null } ?: LocalStrings.current.deletedCategory
 
 @Composable
 fun EmptyText(text: String) {

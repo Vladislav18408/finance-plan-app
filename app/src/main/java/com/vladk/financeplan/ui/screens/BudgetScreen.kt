@@ -29,6 +29,16 @@ import com.vladk.financeplan.data.Calc
 import com.vladk.financeplan.data.Category
 import com.vladk.financeplan.data.Kind
 import com.vladk.financeplan.data.PlanType
+import com.vladk.financeplan.data.Group
+import com.vladk.financeplan.data.Presets
+import com.vladk.financeplan.ui.components.CategoryAvatar
+import com.vladk.financeplan.ui.components.Legend
+import com.vladk.financeplan.ui.components.LegendItem
+import com.vladk.financeplan.ui.components.Segment
+import com.vladk.financeplan.ui.components.StackedBar
+import com.vladk.financeplan.ui.components.title
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.TextButton
 import com.vladk.financeplan.ui.LocalFmt
 import com.vladk.financeplan.ui.LocalStrings
 import com.vladk.financeplan.ui.components.EmptyText
@@ -49,6 +59,7 @@ fun BudgetScreen(
     month: YearMonth,
     onEditIncome: () -> Unit,
     onEditCategory: (Category?) -> Unit,
+    onAddPresets: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val s = LocalStrings.current
@@ -100,51 +111,19 @@ fun BudgetScreen(
             }
         }
 
-        // 3. Categories, grouped by kind
-        item {
-            SectionCard(title = s.categories) {
-                if (data.categories.isEmpty()) EmptyText(s.noCategories)
-                Kind.entries.forEach { kind ->
-                    val lines = summary.lines.filter { it.category.kind == kind }
-                    if (lines.isNotEmpty()) {
-                        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            KindDot(kind)
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                s.kind(kind),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = kindColor(kind),
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(fmt.money(summary.plannedByKind[kind] ?: 0.0), style = MaterialTheme.typography.labelLarge)
-                        }
-                        lines.forEach { line ->
-                            val c = line.category
-                            ListRow(
-                                title = c.name,
-                                subtitle = when (c.planType) {
-                                    PlanType.FIXED -> s.planFixed
-                                    PlanType.PERCENT -> "${fmt.pct(c.percent)} ${s.percentOfSalary.removePrefix("% ")}"
-                                } + if (c.note.isNotBlank()) " · ${c.note}" else "",
-                                value = fmt.money(line.planned),
-                                onClick = { onEditCategory(c) },
-                            )
-                        }
-                        HorizontalDivider(Modifier.padding(top = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                FilledTonalButton(onClick = { onEditCategory(null) }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Filled.Add, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(s.addCategory)
-                }
-            }
-        }
-
-        // 4. 50/30/20 comparison
+        // 3. 50/30/20: the planned split as one bar, then the comparison table
         if (income.salary > 0) item {
             SectionCard(title = s.ruleTitle) {
+                StackedBar(
+                    Kind.entries.map { k -> Segment(s.kind(k), summary.plannedByKind[k] ?: 0.0, kindColor(k)) } +
+                        Segment(s.unallocated, Calc.unallocated(data, summary).coerceAtLeast(0.0), MaterialTheme.colorScheme.outlineVariant),
+                )
+                Spacer(Modifier.height(8.dp))
+                Legend(
+                    Kind.entries.map { k -> LegendItem(s.kind(k), kindColor(k)) } +
+                        LegendItem(s.unallocated, MaterialTheme.colorScheme.outlineVariant),
+                )
+                Spacer(Modifier.height(8.dp))
                 TableRow(listOf("", s.ruleCol, s.planned, s.actual), header = true)
                 Calc.rule503020(data, summary).forEach { r ->
                     TableRow(
@@ -164,6 +143,60 @@ fun BudgetScreen(
                 ValueRow(s.investPerMonth, fmt.money(Calc.monthlyInvesting(data, summary)))
                 ValueRow(s.savePerMonth, fmt.money(Calc.monthlySaving(data, summary)))
                 ValueRow(s.savingsRate, fmt.pct(Calc.savingsRate(data, summary)), strong = true)
+            }
+        }
+
+        // 5. Categories, one card per group. Tap a row to set its amount.
+        item {
+            Text(
+                s.categories,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 4.dp, top = 8.dp),
+            )
+        }
+        if (data.categories.isEmpty()) item { EmptyText(s.noCategories) }
+        Group.entries.forEach { g ->
+            val lines = summary.lines.filter { it.category.group == g }
+            if (lines.isNotEmpty()) item(key = "group-${g.name}") {
+                SectionCard(
+                    title = "${g.emoji}  ${s.group(g)}",
+                    action = {
+                        Text(fmt.money(lines.sumOf { it.planned }), style = MaterialTheme.typography.labelLarge)
+                    },
+                ) {
+                    lines.forEach { line ->
+                        val c = line.category
+                        val planText = when {
+                            line.planned == 0.0 && c.amount == 0.0 && c.percent == 0.0 -> s.notPlanned
+                            c.planType == PlanType.FIXED -> s.planFixed
+                            else -> "${fmt.pct(c.percent)} ${s.percentOfSalary.removePrefix("% ")}"
+                        }
+                        ListRow(
+                            title = c.title(),
+                            subtitle = "${s.kind(c.kind)} · $planText" + if (c.note.isNotBlank()) " · ${c.note}" else "",
+                            value = if (line.planned > 0) fmt.money(line.planned) else "—",
+                            onClick = { onEditCategory(c) },
+                            leading = { CategoryAvatar(c) },
+                            valueColor = if (line.planned > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Column {
+                FilledTonalButton(onClick = { onEditCategory(null) }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(s.addCategory)
+                }
+                val missing = Presets.missing(data.categories).size
+                if (missing > 0) {
+                    TextButton(onClick = onAddPresets, modifier = Modifier.fillMaxWidth()) {
+                        Text(s.addSuggested.format(missing))
+                    }
+                }
             }
         }
     }

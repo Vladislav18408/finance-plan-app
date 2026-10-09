@@ -47,12 +47,16 @@ import com.vladk.financeplan.ui.screens.BudgetScreen
 import com.vladk.financeplan.ui.screens.ExpensesScreen
 import com.vladk.financeplan.ui.screens.GoalsScreen
 import com.vladk.financeplan.ui.screens.OverviewScreen
+import com.vladk.financeplan.ui.screens.ReportTab
+import com.vladk.financeplan.ui.screens.ReportsScreen
+import com.vladk.financeplan.data.Reports
+import androidx.compose.material.icons.filled.BarChart
 import com.vladk.financeplan.ui.screens.SettingsScreen
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 
-enum class Tab { OVERVIEW, EXPENSES, BUDGET, GOALS }
+enum class Tab { OVERVIEW, EXPENSES, REPORTS, BUDGET, GOALS }
 
 /** Which add/edit dialog is open. Only one at a time. */
 sealed interface Editor {
@@ -76,6 +80,9 @@ fun FinanceApp(vm: FinanceViewModel) {
     val month = YearMonth.parse(monthText)
     var categoryFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var reportTab by rememberSaveable { mutableStateOf(ReportTab.WEEK) }
+    var weekText by rememberSaveable { mutableStateOf(Reports.weekStart(LocalDate.now()).toString()) }
+    val weekStart = LocalDate.parse(weekText)
     var editor by remember { mutableStateOf<Editor?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -94,6 +101,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                             if (showSettings) s.settings else when (tab) {
                                 Tab.OVERVIEW -> s.tabOverview
                                 Tab.EXPENSES -> s.tabExpenses
+                                Tab.REPORTS -> s.tabReports
                                 Tab.BUDGET -> s.tabBudget
                                 Tab.GOALS -> s.tabGoals
                             },
@@ -121,6 +129,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                     NavigationBar {
                         NavItem(Tab.OVERVIEW, tab, Icons.Filled.Home, s.tabOverview) { tab = it }
                         NavItem(Tab.EXPENSES, tab, Icons.AutoMirrored.Filled.ReceiptLong, s.tabExpenses) { tab = it }
+                        NavItem(Tab.REPORTS, tab, Icons.Filled.BarChart, s.tabReports) { tab = it }
                         NavItem(Tab.BUDGET, tab, Icons.Filled.AccountBalanceWallet, s.tabBudget) { tab = it }
                         NavItem(Tab.GOALS, tab, Icons.Filled.Flag, s.tabGoals) { tab = it }
                     }
@@ -147,7 +156,14 @@ fun FinanceApp(vm: FinanceViewModel) {
                     onMonthChange = { monthText = it.toString() },
                     onOpenCategory = { id -> categoryFilter = id; tab = Tab.EXPENSES },
                     onAddExpense = { id -> editor = Editor.ExpenseEdit(null, id) },
+                    onEditExpense = { editor = Editor.ExpenseEdit(it) },
                     onGoToBudget = { tab = Tab.BUDGET },
+                    onOpenWeekly = {
+                        reportTab = ReportTab.WEEK
+                        weekText = Reports.weekStart(LocalDate.now()).toString()
+                        tab = Tab.REPORTS
+                    },
+                    onSeeAllExpenses = { categoryFilter = null; tab = Tab.EXPENSES },
                     modifier = modifier,
                 )
                 Tab.EXPENSES -> ExpensesScreen(
@@ -159,11 +175,23 @@ fun FinanceApp(vm: FinanceViewModel) {
                     onEdit = { editor = Editor.ExpenseEdit(it) },
                     modifier = modifier,
                 )
+                Tab.REPORTS -> ReportsScreen(
+                    data = data,
+                    month = month,
+                    onMonthChange = { monthText = it.toString() },
+                    tab = reportTab,
+                    onTabChange = { reportTab = it },
+                    weekStart = weekStart,
+                    onWeekChange = { weekText = it.toString() },
+                    onEditExpense = { editor = Editor.ExpenseEdit(it) },
+                    modifier = modifier,
+                )
                 Tab.BUDGET -> BudgetScreen(
                     data = data,
                     month = month,
                     onEditIncome = { editor = Editor.IncomeEdit },
                     onEditCategory = { editor = Editor.CategoryEdit(it) },
+                    onAddPresets = vm::addMissingPresets,
                     modifier = modifier,
                 )
                 Tab.GOALS -> GoalsScreen(
@@ -182,6 +210,7 @@ fun FinanceApp(vm: FinanceViewModel) {
             is Editor.ExpenseEdit -> ExpenseDialog(
                 initial = e.expense,
                 categories = data.categories,
+                recentCategoryIds = data.expenses.sortedByDescending { it.date }.map { it.categoryId }.distinct(),
                 defaultDate = if (month == YearMonth.now()) LocalDate.now() else month.atDay(1),
                 preselectedCategoryId = e.preselectedCategoryId,
                 onSave = vm::saveExpense,

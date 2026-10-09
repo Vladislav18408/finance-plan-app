@@ -29,6 +29,9 @@ class Fmt(private val strings: Strings, private val currency: String) {
 
     fun money(v: Double) = "${money2.format(v)} $currency"
     fun moneyWhole(v: Double) = "${whole.format(v)} $currency"
+
+    /** Plain whole number for chart axes ("1 200"). */
+    fun number(v: Double): String = whole.format(v)
     fun pct(v: Double) = "${pct1.format(v)}%"
 
     /** Pct with an explicit sign, for "difference from the rule" columns. */
@@ -53,6 +56,24 @@ class Fmt(private val strings: Strings, private val currency: String) {
     }
 
     fun shortDate(date: LocalDate): String = date.format(DateTimeFormatter.ofPattern("d MMM yyyy", locale))
+
+    fun dayMonth(date: LocalDate): String = date.format(DateTimeFormatter.ofPattern("d MMM", locale))
+
+    /** "6 – 12 окт 2026" (or "29 сеп – 5 окт 2026" when the week spans two months). */
+    fun weekRange(start: LocalDate): String {
+        val end = start.plusDays(6)
+        val left = if (start.month == end.month) start.dayOfMonth.toString() else dayMonth(start)
+        return "$left – ${shortDate(end)}"
+    }
+
+    /** Two-letter weekday for chart labels: "пн", "Mo" … */
+    fun weekdayShort(date: LocalDate): String =
+        date.dayOfWeek.getDisplayName(TextStyle.SHORT_STANDALONE, locale).take(2)
+            .replaceFirstChar { it.titlecase(locale) }
+
+    fun monthShort(m: YearMonth): String =
+        m.month.getDisplayName(TextStyle.SHORT_STANDALONE, locale).take(3)
+            .replaceFirstChar { it.titlecase(locale) }
 }
 
 val LocalFmt = staticCompositionLocalOf { Fmt(Bulgarian, "€") }

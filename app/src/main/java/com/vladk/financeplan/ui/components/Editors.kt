@@ -62,8 +62,12 @@ import com.vladk.financeplan.data.ExtraIncome
 import com.vladk.financeplan.data.Goal
 import com.vladk.financeplan.data.Income
 import com.vladk.financeplan.data.Investing
+import com.vladk.financeplan.data.Group
 import com.vladk.financeplan.data.Kind
 import com.vladk.financeplan.data.PlanType
+import com.vladk.financeplan.data.Presets
+import com.vladk.financeplan.data.emoji
+import com.vladk.financeplan.data.label
 import com.vladk.financeplan.ui.LocalFmt
 import com.vladk.financeplan.ui.LocalStrings
 import com.vladk.financeplan.ui.theme.badColor
@@ -118,6 +122,7 @@ private fun FieldLabel(text: String) {
 fun ExpenseDialog(
     initial: Expense?,
     categories: List<Category>,
+    recentCategoryIds: List<String>,
     defaultDate: LocalDate,
     preselectedCategoryId: String?,
     onSave: (Expense) -> Unit,
@@ -194,19 +199,8 @@ fun ExpenseDialog(
         if (categories.isEmpty()) {
             EmptyText(s.needCategoryFirst)
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Kind.entries.forEach { kind ->
-                categories.filter { it.kind == kind }.forEach { c ->
-                    FilterChip(
-                        selected = c.id == categoryId,
-                        onClick = { categoryId = c.id; categoryError = false },
-                        label = { Text(c.name) },
-                        leadingIcon = { KindDot(c.kind, 8) },
-                    )
-                }
-            }
-        }
         if (categoryError) Text(s.pickCategory, color = badColor(), style = MaterialTheme.typography.bodySmall)
+        CategoryPicker(categories, recentCategoryIds, categoryId) { categoryId = it; categoryError = false }
 
         FieldLabel(s.date)
         OutlinedButton(onClick = { showDatePicker = true }, modifier = Modifier.fillMaxWidth()) {
@@ -247,6 +241,55 @@ fun ExpenseDialog(
     }
 }
 
+/** Recently used categories first, then all categories under their group headers. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CategoryPicker(
+    categories: List<Category>,
+    recentIds: List<String>,
+    selectedId: String?,
+    onSelect: (String) -> Unit,
+) {
+    val s = LocalStrings.current
+    val byId = categories.associateBy { it.id }
+    val recent = recentIds.mapNotNull { byId[it] }.take(6)
+
+    @Composable
+    fun chips(list: List<Category>) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            list.forEach { c ->
+                FilterChip(
+                    selected = c.id == selectedId,
+                    onClick = { onSelect(c.id) },
+                    label = { Text("${c.emoji()}  ${c.title()}") },
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun header(text: String) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+
+    if (recent.isNotEmpty()) {
+        header(s.recentlyUsed)
+        chips(recent)
+    }
+    Group.entries.forEach { g ->
+        val list = categories.filter { it.group == g }
+        if (list.isNotEmpty()) {
+            header("${g.emoji}  ${s.group(g)}")
+            chips(list)
+        }
+    }
+}
+
 // ---------------------------------------------------------------- Category
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -260,8 +303,10 @@ fun CategoryDialog(
 ) {
     val s = LocalStrings.current
     val fmt = LocalFmt.current
-    var name by remember { mutableStateOf(initial?.name ?: "") }
-    var kind by remember { mutableStateOf(initial?.kind ?: Kind.NEEDS) }
+    var name by remember { mutableStateOf(initial?.label(s.code) ?: "") }
+    var group by remember { mutableStateOf(initial?.group ?: Group.OTHER) }
+    var icon by remember { mutableStateOf(initial?.icon ?: "") }
+    var kind by remember { mutableStateOf(initial?.kind ?: Group.OTHER.defaultKind) }
     var planType by remember { mutableStateOf(initial?.planType ?: PlanType.FIXED) }
     var amount by remember { mutableStateOf(initial?.let { fmt.input(it.amount) } ?: "") }
     var percent by remember { mutableStateOf(initial?.let { fmt.input(it.percent) } ?: "") }
@@ -277,15 +322,20 @@ fun CategoryDialog(
         nameError = name.isBlank()
         numberError = (planType == PlanType.FIXED && a == null) || (planType == PlanType.PERCENT && p == null)
         if (nameError || numberError) return null
+        // A predefined category that keeps its original name stays translatable (empty stored name).
+        val presetName = initial?.presetId?.let { Presets.name(it, s.code) }
         return Category(
             id = initial?.id ?: com.vladk.financeplan.data.newId(),
-            name = name.trim(),
+            name = if (name.trim() == presetName) "" else name.trim(),
             kind = kind,
             planType = planType,
             amount = a ?: 0.0,
             percent = p ?: 0.0,
             minusVouchers = planType == PlanType.PERCENT && minusVouchers,
             note = note.trim(),
+            group = group,
+            icon = icon.trim(),
+            presetId = initial?.presetId,
         )
     }
 
@@ -301,6 +351,29 @@ fun CategoryDialog(
             onValueChange = { name = it; nameError = false },
             error = if (nameError) s.nameRequired else null,
         )
+        OutlinedTextField(
+            value = icon,
+            onValueChange = { icon = it.take(4) },
+            label = { Text(s.icon) },
+            placeholder = { Text(group.emoji) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        FieldLabel(s.group)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Group.entries.forEach { g ->
+                FilterChip(
+                    selected = g == group,
+                    onClick = {
+                        group = g
+                        // For a new category, suggest the group's usual type.
+                        if (initial == null) kind = g.defaultKind
+                    },
+                    label = { Text("${g.emoji}  ${s.group(g)}") },
+                )
+            }
+        }
 
         FieldLabel(s.kind)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -358,7 +431,7 @@ fun CategoryDialog(
     if (confirmDelete) {
         ConfirmDialog(
             title = s.deleteConfirmTitle,
-            text = "${initial?.name}\n\n${s.deleteCategoryWarning}",
+            text = "${initial.title()}\n\n${s.deleteCategoryWarning}",
             confirmLabel = s.delete,
             onConfirm = { onDelete(); onDismiss() },
             onDismiss = { confirmDelete = false },

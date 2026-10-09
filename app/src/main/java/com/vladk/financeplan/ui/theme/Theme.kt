@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import com.vladk.financeplan.data.Group
 import com.vladk.financeplan.data.Kind
 
 private val Light = lightColorScheme(
@@ -66,6 +67,44 @@ fun kindColor(kind: Kind): Color {
         Kind.INVESTMENTS -> if (dark) Color(0xFFC6A4F2) else Color(0xFF7346B5)
     }
 }
+
+/**
+ * Categorical chart palette (blue, orange, aqua, yellow, magenta, green, violet, red), validated for
+ * colour-blind separation in this fixed order. Light and dark are separate steps of the same hues.
+ */
+private val SeriesLight = listOf(
+    Color(0xFF2A78D6), Color(0xFFEB6834), Color(0xFF1BAF7A), Color(0xFFEDA100),
+    Color(0xFFE87BA4), Color(0xFF008300), Color(0xFF4A3AA7), Color(0xFFE34948),
+)
+private val SeriesDark = listOf(
+    Color(0xFF3987E5), Color(0xFFD95926), Color(0xFF199E70), Color(0xFFC98500),
+    Color(0xFFD55181), Color(0xFF008300), Color(0xFF9085E9), Color(0xFFE66767),
+)
+
+@Composable
+fun seriesColor(slot: Int): Color = (if (isSystemInDarkTheme()) SeriesDark else SeriesLight)[slot % 8]
+
+/** Each spending group keeps the same colour in every chart (colour follows the entity). */
+@Composable
+fun groupColor(group: Group): Color = when (group) {
+    Group.HOUSING -> seriesColor(0)
+    Group.FOOD -> seriesColor(1)
+    Group.TRANSPORT -> seriesColor(2)
+    Group.HEALTH -> seriesColor(3)
+    Group.LIFESTYLE -> seriesColor(4)
+    Group.EDUCATION -> seriesColor(5)
+    Group.IRREGULAR -> seriesColor(6)
+    Group.OTHER -> chartMuted()
+    Group.SAVINGS -> kindColor(Kind.SAVINGS)
+    Group.INVESTMENTS -> kindColor(Kind.INVESTMENTS)
+}
+
+/** Recessive chart chrome: gridlines, axis text, "previous period" lines. */
+@Composable
+fun chartGrid(): Color = if (isSystemInDarkTheme()) Color(0xFF2C2C2A) else Color(0xFFE1E0D9)
+
+@Composable
+fun chartMuted(): Color = Color(0xFF898781)
 
 /** Green for good, red for over budget. */
 @Composable

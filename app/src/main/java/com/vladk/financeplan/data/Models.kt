@@ -14,6 +14,8 @@ data class AppData(
     val goals: List<Goal> = emptyList(),
     val emergency: EmergencyFund = EmergencyFund(),
     val investing: Investing = Investing(),
+    /** Version of the predefined category list that was added on first start (0 = never). */
+    val presetsVersion: Int = 0,
 )
 
 @Serializable
@@ -52,8 +54,29 @@ enum class Kind { NEEDS, WANTS, SAVINGS, INVESTMENTS;
 enum class PlanType { FIXED, PERCENT }
 
 /**
+ * Category groups (like Monarch's "Food & Dining", "Auto & Transport" …). They organise the budget
+ * and the charts; [defaultKind] is suggested when a new category is put into the group.
+ */
+@Serializable
+enum class Group(val emoji: String, val defaultKind: Kind) {
+    HOUSING("🏠", Kind.NEEDS),
+    FOOD("🍽️", Kind.NEEDS),
+    TRANSPORT("🚗", Kind.NEEDS),
+    HEALTH("💊", Kind.NEEDS),
+    EDUCATION("🎓", Kind.NEEDS),
+    LIFESTYLE("🛍️", Kind.WANTS),
+    IRREGULAR("🎁", Kind.WANTS),
+    OTHER("📦", Kind.WANTS),
+    SAVINGS("🐷", Kind.SAVINGS),
+    INVESTMENTS("📈", Kind.INVESTMENTS),
+}
+
+/**
  * A budget line. FIXED -> [amount] per month. PERCENT -> [percent] of the salary,
  * optionally minus food vouchers (for groceries) when [minusVouchers] is set.
+ *
+ * Predefined categories have a [presetId] and an empty [name]; their name is then shown in the
+ * app's current language (see Presets.kt). Renaming one stores the new [name].
  */
 @Serializable
 data class Category(
@@ -65,6 +88,9 @@ data class Category(
     val percent: Double = 0.0,
     val minusVouchers: Boolean = false,
     val note: String = "",
+    val group: Group = Group.OTHER,
+    val icon: String = "",
+    val presetId: String? = null,
 )
 
 /** One spending (or, for saving kinds, one deposit). [date] is ISO yyyy-MM-dd. */
