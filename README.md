@@ -23,11 +23,18 @@ Interface language: **Bulgarian** (default) or **English** – switch in *Settin
 | **Reports** (Отчети) | Three tabs: **Week** – Monday to Sunday: total vs. weekly guide, comparison with the week before, daily bar chart (tap a bar to see that day), spending by category, the week's expenses. **Month** – donut chart by group, cash flow (income → spent / saved / left), spending through the month, top categories. **Trends** – spending and savings for the last 6 months, averages, average per category. |
 | **Budget** (Бюджет) | Salary, food vouchers and extra incomes. The 50/30/20 split as a bar and a table. All categories by group – tap one to set a fixed amount or a % of the salary, rename it, change its emoji, group or type. |
 | **Goals** (Цели) | Emergency fund (N months of planned needs), savings goals with progress, and an investing projection for 5–40 years. |
-| **Settings** (Настройки) | Language, currency (€, лв., $, £), save/restore a backup file, export all expenses as CSV for Excel, delete all data. |
+| **Settings** (Настройки) | Language, currency (€, лв., $, £), save/restore a backup file, **daily reminder** to record expenses, export all expenses as CSV for Excel, delete all data. |
 
 Adding an expense is one button (**+ Add expense**): type the amount, tap a category
 (recently used ones are on top), Save – everything fits on one screen above the keyboard. The **+** inside the amount field adds up a receipt,
 e.g. `11,60+4,40+10`.
+
+So nothing is missed:
+- **Daily reminder** (*Settings → Reminder*): a notification at the time you choose; tapping it opens
+  the new-expense form.
+- **Regular payments**: tick *Repeat every month* on rent, subscriptions or instalments and the app
+  adds them by itself each month (*Budget → Regular payments* lists them).
+- **Shortcut**: press and hold the app icon → *Add expense*.
 
 ## Predefined categories
 
