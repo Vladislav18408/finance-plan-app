@@ -18,15 +18,15 @@ Interface language: **Bulgarian** (default) or **English** – switch in *Settin
 
 | Screen | What you do there |
 |---|---|
-| **Overview** (Преглед) | The month at a glance: spent vs. planned, saved + invested, unallocated money, **this week** (Mon–Sun) against the weekly guide, a **line chart of spending through the month** (this month vs. last month vs. plan), the budget by group with a progress bar + status per category, and the latest expenses. |
-| **Expenses** (Разходи) | Everything you recorded, grouped by day with day totals. Filter by category. **Tap any expense to change or delete it.** |
+| **Overview** (Преглед) | The month at a glance: spent vs. planned and **how much is left per day**, saved + invested, unallocated money, **this week** (Mon–Sun) against the weekly guide, a **line chart of spending through the month** (this month vs. last month vs. plan), the budget by group with a progress bar + status per category, and the latest expenses. |
+| **Expenses** (Разходи) | Everything you recorded, grouped by day with day totals. Filter by category, or **search** all months by note, category or amount. **Tap any expense to change or delete it** (with Undo). |
 | **Reports** (Отчети) | Three tabs: **Week** – Monday to Sunday: total vs. weekly guide, comparison with the week before, daily bar chart (tap a bar to see that day), spending by category, the week's expenses. **Month** – donut chart by group, cash flow (income → spent / saved / left), spending through the month, top categories. **Trends** – spending and savings for the last 6 months, averages, average per category. |
 | **Budget** (Бюджет) | Salary, food vouchers and extra incomes. The 50/30/20 split as a bar and a table. All categories by group – tap one to set a fixed amount or a % of the salary, rename it, change its emoji, group or type. |
 | **Goals** (Цели) | Emergency fund (N months of planned needs), savings goals with progress, and an investing projection for 5–40 years. |
-| **Settings** (Настройки) | Language, currency (€, лв., $, £), save/restore a backup file, delete all data. |
+| **Settings** (Настройки) | Language, currency (€, лв., $, £), save/restore a backup file, export all expenses as CSV for Excel, delete all data. |
 
 Adding an expense is one button (**+ Add expense**): type the amount, tap a category
-(recently used ones are on top), done. The **+** inside the amount field adds up a receipt,
+(recently used ones are on top), Save – everything fits on one screen above the keyboard. The **+** inside the amount field adds up a receipt,
 e.g. `11,60+4,40+10`.
 
 ## Predefined categories
@@ -74,6 +74,8 @@ Use *Settings → Save backup* regularly and keep the file somewhere safe (e.g. 
 - Kotlin, Jetpack Compose, Material 3
 - Android 8.0 (API 26) or newer
 - Build: Android Gradle Plugin 9.4, Gradle 9.8 (wrapper included)
+
+Run the unit tests (formulas, reports, backup handling) with `gradlew testDebugUnitTest`.
 
 Technical details – structure, data model, all formulas – are in
 [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md). A step-by-step guide for using the app is in

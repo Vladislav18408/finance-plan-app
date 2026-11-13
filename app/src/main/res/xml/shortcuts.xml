@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the app icon: "Add expense" opens the app directly on the new-expense form. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="add_expense"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/shortcut_add_expense"
+        android:shortcutLongLabel="@string/shortcut_add_expense">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.vladk.financeplan"
+            android:targetClass="com.vladk.financeplan.MainActivity">
+            <extra
+                android:name="com.vladk.financeplan.ADD_EXPENSE"
+                android:value="true" />
+        </intent>
+    </shortcut>
+</shortcuts>

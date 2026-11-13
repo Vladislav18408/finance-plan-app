@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- In-app texts live in ui/Strings.kt so the language can be switched inside the app. -->
-    <string name="app_name">Finance Plan</string>
+    <string name="app_name" translatable="false">Finance Plan</string>
+    <!-- Shown by the phone's launcher (long-press on the icon), so it follows the phone's language. -->
+    <string name="shortcut_add_expense">Добави разход</string>
 </resources>

@@ -34,8 +34,11 @@ Finance App/
          │  ├─ Models.kt                    Data classes saved to disk (incl. Group enum)
          │  ├─ Presets.kt                   The 35 predefined categories (BG + EN names)
          │  ├─ Repository.kt                Loads/saves the JSON file, seeds presets, exposes a StateFlow
+         │  ├─ Backup.kt                    Reads and checks saved data and backups; CSV export
+         │  ├─ Regular.kt                   Regular (monthly) payments: which are due, adding them
          │  ├─ Calc.kt                      Budget formulas (pure functions)
          │  └─ Reports.kt                   Weekly / monthly / trend report formulas
+         ├─ reminder/Reminders.kt           Daily reminder: alarm, notification, boot receiver
          └─ ui/
             ├─ FinanceApp.kt                Scaffold, bottom navigation, which dialog is open
             ├─ FinanceViewModel.kt          One function per user action (save/delete …)
@@ -43,9 +46,11 @@ Finance App/
             ├─ Format.kt                    Money / % / date formatting per language
             ├─ theme/Theme.kt               Colors (light + dark), color per kind
             ├─ components/Components.kt     Cards, progress bar, status chip, rows, inputs
-            ├─ components/Editors.kt        Add/edit dialogs (expense, category, income, goals)
+            ├─ components/Editors.kt        Add/edit forms as bottom sheets (expense, category, income, goals)
             ├─ components/Charts.kt         Canvas charts: bars, donut, line, stacked bar, legend
             └─ screens/                     Overview, Expenses, Reports, Budget, Goals, Settings
+
+app/src/test/java/com/vladk/financeplan/data/    Unit tests: CalcTest, ReportsTest, BackupTest
 ```
 
 ## 3. Architecture
@@ -61,12 +66,53 @@ Compose screens ──(user action)──► FinanceViewModel ──► Reposito
 - **Repository** keeps the current `AppData` in a `MutableStateFlow` and, after each change, writes the
   whole file on a background thread. It writes to `finance-data.json.tmp` first and renames it, so the
   file is never half-written. If the file cannot be read at start-up it is copied to
-  `finance-data.broken.json` and the app starts empty instead of crashing.
+  `finance-data.broken.json` and the app starts empty instead of crashing. A failed write (e.g. full
+  storage) does not crash the app either: `saveFailed` turns true and the UI shows a message.
+- **Backup** (`data/Backup.kt`) is the gate for everything read from a file. `Backup.clean` repairs
+  what it can (a date like `2026-11-5`, duplicate or empty ids, negative plan amounts) and leaves
+  out expenses whose date or amount cannot be read, so the rest of the app can rely on ISO dates,
+  finite numbers and unique ids. `Backup.parse` also refuses any JSON that is not a backup – it
+  must contain the `categories` and `expenses` lists. Every field has a default, so without this
+  check `{}` would count as an empty backup and replace the user's data.
 - **Calc** contains every formula as a pure function, so the UI only displays results.
 - **Navigation** is a simple `Tab` enum plus a `showSettings` flag (no navigation library needed).
-  Only one dialog is open at a time, described by the `Editor` sealed interface.
+  Only one add/edit form is open at a time, described by the `Editor` sealed interface. The forms
+  are bottom sheets drawn as a layer inside the activity (`EditorDialog` in `Editors.kt`), not
+  dialog windows: only the activity window reports the keyboard's size reliably, and the sheet
+  needs it to keep Cancel / Save above the keyboard. The activity handles rotation itself
+  (`configChanges` in the manifest), so a half-filled form survives turning the phone.
 - **Language** is not taken from the phone's locale; it is a setting stored in `AppData`, so it can be
   switched inside the app instantly. `LocalStrings` and `LocalFmt` provide the texts and formatters.
+
+### Daily reminder (`reminder/Reminders.kt`)
+
+- `Settings.reminder` (`enabled`, `hour`, `minute`, `skipIfRecorded`) is part of `AppData`, so it is
+  in the backup too.
+- `Reminders.schedule` sets **one** alarm for the next reminder time (`AlarmManager`, exact where
+  Android allows it, otherwise within a 10-minute window). It is called when the app starts, when
+  the setting changes and after a backup is restored.
+- `ReminderReceiver` runs when the alarm fires: it reads the data file (`Repository.readOnce`), shows
+  the notification (`Reminders.message` decides the text, or silence when `skipIfRecorded` applies)
+  and sets the alarm for the next day. Alarms are lost when the phone restarts, so the same receiver
+  also listens for `BOOT_COMPLETED`, app updates and clock / time-zone changes and sets it again.
+- Tapping the notification starts `MainActivity` with the `ADD_EXPENSE` extra, which opens the
+  new-expense form. The launcher shortcut (`res/xml/shortcuts.xml`) uses the same extra.
+- Permissions: `POST_NOTIFICATIONS` (asked for when the reminder is switched on, Android 13+),
+  `RECEIVE_BOOT_COMPLETED`, and `USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM` for on-the-minute
+  delivery. **If the app is ever published on Google Play, remove `USE_EXACT_ALARM`** – Play accepts
+  it only from alarm and calendar apps; the reminder then falls back to the 10-minute window.
+- Limits: "Force stop" in the phone's settings cancels the alarm until the app is opened again, and
+  some phones' battery savers delay or block alarms for apps that are rarely opened.
+
+### Regular payments (`data/Regular.kt`)
+
+- `AppData.recurring` holds `Recurring(id, categoryId, amount, note, day, lastAdded = "yyyy-MM")`.
+  Ticking *Repeat every month* on a new expense creates one with `lastAdded` = that expense's month.
+- `Regular.addDue(data, today)` runs when the app starts and when the date changes while it is open.
+  For each payment it adds an ordinary expense for every month after `lastAdded` whose date
+  (`day`, clamped to the month's length) is not after today – at most 12 months back – and moves
+  `lastAdded` forward. The expense id is `regular-<id>-<yyyy-MM>`, so a payment can never be added
+  twice for the same month. Deleting a category removes its regular payments.
 
 ## 4. Data model (`data/Models.kt`)
 
@@ -94,10 +140,14 @@ AppData(
   language (`Category.label(lang)` in `Presets.kt`). Renaming one stores the new name. Their ids are
   stable (`preset-<id>`), so backups and re-added presets match.
 - Percentages are stored as human numbers (12.5 means 12.5%).
-- Expenses are kept for all months; a month is selected by the `yyyy-MM` prefix of `date`.
+- Expenses are kept for all months; a month is selected by the `yyyy-MM` prefix of `date`. Dates
+  are always ISO `yyyy-MM-dd`, which sorts the same as text, so date ranges are string comparisons.
 - Deleting a category also deletes its expenses.
 - The backup file (*Settings → Save backup*) is exactly this JSON. Unknown fields are ignored when
   reading, so older backups keep working when fields are added.
+- *Settings → Export expenses (CSV)* writes one row per expense (date, category, group, type,
+  amount, note) with a UTF-8 byte-order mark: `;` and a decimal comma in Bulgarian, `,` and a
+  decimal point in English – what Excel expects in each language.
 
 ## 5. Formulas (`data/Calc.kt`)
 
@@ -109,6 +159,7 @@ These match the formulas of the original *Finance Plan BG* spreadsheet.
 | Actual of a category | sum of its expenses in the month | Бюджет!H "Реално (€)" |
 | Status | spending: `actual ≤ planned` → Within plan, else Over budget; savings/investments: `actual ≥ planned` → Goal reached, else Below goal; `actual = 0` → No data yet | Преглед!G |
 | Unallocated | `salary − Σ planned` | Преглед!D17 |
+| Left per day | `(planned spending − actual spending) / days left in the month, today included`; current month only | – |
 | 50/30/20 | planned/actual % of salary for Needs, Wants, Savings+Investments vs. 50 / 30 / 20 | Преглед rows 21–24 |
 | Extra incomes | total; `× investShare%` → investments; rest → savings | Преглед rows 27–32 |
 | Monthly investing | planned Investments + extra income to investments | Преглед!D33 |
@@ -133,9 +184,10 @@ categories are counted as "saved".
 | Spending through the month | running total per day; stops at today for the current month |
 | Plan line | planned spending × day / days in month |
 | Cash flow | income (salary + extra incomes) → spent, saved, left = income − spent − saved |
-| Trends | spending and saved for the last 6 months; averages start at the first month with data |
+| Trends | spending and saved for the last 6 months; averages start at the first month with data and leave out the month in progress (unless it is the only one with data) |
 
-Amount input (`Calc.parseAmount`) accepts `12,50`, `12.50`, `1 250` and sums like `4,40+7,10`.
+Amount input (`Calc.parseAmount`) accepts `12,50`, `12.50`, `1 250` and sums like `4,40+7,10`;
+the result is rounded to cents.
 
 ## 6. Charts (`ui/components/Charts.kt`)
 
@@ -160,6 +212,7 @@ so no separate Gradle install is needed.
 ```
 gradlew assembleDebug        # debug APK → app/build/outputs/apk/debug/app-debug.apk
 gradlew installDebug         # install on a connected phone / running emulator
+gradlew testDebugUnitTest    # unit tests for the formulas, reports and backup handling
 ```
 
 `local.properties` (path to the Android SDK) is created by Android Studio and is not committed.
@@ -170,12 +223,12 @@ For a release build that can be shared, create a signing key in Android Studio
 
 ## 8. Privacy
 
-- No internet permission, no analytics, no accounts.
+- No internet permission, no analytics, no accounts. The only permissions are for the optional
+  daily reminder (notifications, start after boot, exact alarm).
 - Data: `/data/data/com.vladk.financeplan/files/finance-data.json` (private to the app).
 - Backup files contain all personal figures; they are ignored by git (`*-backup*.json`).
 
 ## 9. Ideas for later
 
 - Per-month income (when the salary differs from month to month).
-- CSV export for Excel.
 - Home-screen widget for adding an expense in one tap.

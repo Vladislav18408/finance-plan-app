@@ -16,12 +16,42 @@ data class AppData(
     val investing: Investing = Investing(),
     /** Version of the predefined category list that was added on first start (0 = never). */
     val presetsVersion: Int = 0,
+    /** Payments the app adds by itself every month. */
+    val recurring: List<Recurring> = emptyList(),
 )
 
 @Serializable
 data class Settings(
     val language: String = "bg",
     val currency: String = "€",
+    val reminder: Reminder = Reminder(),
+)
+
+/**
+ * The daily "did you record today's expenses?" notification at [hour]:[minute].
+ * With [skipIfRecorded] it stays silent on days that already have at least one expense.
+ */
+@Serializable
+data class Reminder(
+    val enabled: Boolean = false,
+    val hour: Int = 20,
+    val minute: Int = 30,
+    val skipIfRecorded: Boolean = false,
+)
+
+/**
+ * A payment that repeats every month (rent, subscriptions …). The app adds it as an ordinary
+ * expense on [day] of each month; in shorter months the last day is used. [lastAdded] is the
+ * "yyyy-MM" month it was last added for, so no month is ever added twice.
+ */
+@Serializable
+data class Recurring(
+    val id: String = newId(),
+    val categoryId: String,
+    val amount: Double,
+    val note: String = "",
+    val day: Int,
+    val lastAdded: String = "",
 )
 
 /**

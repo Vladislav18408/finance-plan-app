@@ -31,6 +31,10 @@ import com.vladk.financeplan.data.Kind
 import com.vladk.financeplan.data.PlanType
 import com.vladk.financeplan.data.Group
 import com.vladk.financeplan.data.Presets
+import com.vladk.financeplan.data.Recurring
+import com.vladk.financeplan.data.Regular
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.text.style.TextOverflow
 import com.vladk.financeplan.ui.components.CategoryAvatar
 import com.vladk.financeplan.ui.components.Legend
 import com.vladk.financeplan.ui.components.LegendItem
@@ -60,6 +64,7 @@ fun BudgetScreen(
     onEditIncome: () -> Unit,
     onEditCategory: (Category?) -> Unit,
     onAddPresets: () -> Unit,
+    onStopRecurring: (Recurring) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val s = LocalStrings.current
@@ -82,6 +87,37 @@ fun BudgetScreen(
                     Spacer(Modifier.height(8.dp))
                     FilledTonalButton(onClick = onEditIncome) { Text(s.enterIncome) }
                 }
+            }
+        }
+
+        // Regular payments the app adds by itself every month.
+        if (data.recurring.isNotEmpty()) item(key = "regular") {
+            val byId = data.categories.associateBy { it.id }
+            SectionCard(
+                title = "🔁  ${s.regularPayments}",
+                action = { Text("${fmt.money(Regular.monthlyTotal(data))} ${s.perMonth}", style = MaterialTheme.typography.labelLarge) },
+            ) {
+                data.recurring.sortedBy { it.day }.forEach { r ->
+                    val c = byId[r.categoryId]
+                    Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CategoryAvatar(c)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(c.title(), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                listOf(s.regularEvery.format(r.day), r.note).filter { it.isNotBlank() }.joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(fmt.money(r.amount), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        IconButton(onClick = { onStopRecurring(r) }) {
+                            Icon(Icons.Filled.Close, contentDescription = s.stopRepeating)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(s.regularHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 

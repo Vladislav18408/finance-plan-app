@@ -117,6 +117,13 @@ fun OverviewScreen(
                         color = if (diff >= 0) MaterialTheme.colorScheme.onPrimaryContainer else badColor(),
                         fontWeight = FontWeight.SemiBold,
                     )
+                    // What that means per day, while the month is still running.
+                    Calc.dailyAllowance(diff, month)?.takeIf { it.daysLeft > 1 && summary.plannedSpending > 0 }?.let {
+                        Text(
+                            s.perDayLeft.format(fmt.money(it.perDay), it.daysLeft),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                 }
             }
         }
@@ -212,7 +219,7 @@ fun OverviewScreen(
         }
 
         // Recent expenses of the month.
-        val recent = Calc.expensesIn(data, month).sortedByDescending { it.date }.take(5)
+        val recent = Reports.newestFirst(Calc.expensesIn(data, month)).take(5)
         if (recent.isNotEmpty()) item {
             val byId = data.categories.associateBy { it.id }
             SectionCard(title = s.recentExpenses, action = { TextButton(onClick = onSeeAllExpenses) { Text(s.seeAll) } }) {
@@ -220,7 +227,7 @@ fun OverviewScreen(
                     val c = byId[e.categoryId]
                     ListRow(
                         title = c.title(),
-                        subtitle = listOf(fmt.dayMonth(LocalDate.parse(e.date)), e.note).filter { it.isNotBlank() }.joinToString(" · "),
+                        subtitle = listOf(fmt.dayMonth(e.date), e.note).filter { it.isNotBlank() }.joinToString(" · "),
                         value = fmt.money(e.amount),
                         onClick = { onEditExpense(e) },
                         leading = { CategoryAvatar(c) },
@@ -237,11 +244,14 @@ internal fun MonthLineCard(data: AppData, month: YearMonth) {
     val s = LocalStrings.current
     val fmt = LocalFmt.current
     var selected by remember(month) { mutableStateOf<Int?>(null) }
-    val current = Reports.cumulative(data, month)
-    val previousMonth = month.minusMonths(1)
-    val previous = Reports.cumulative(data, previousMonth)
-    val planned = Calc.summary(data, month).plannedSpending
     val days = month.lengthOfMonth()
+    // Remembered, so dragging the crosshair does not add everything up again on every frame.
+    val today = LocalDate.now()
+    val current = remember(data, month, today) { Reports.cumulative(data, month, today) }
+    // Last month is compared day by day, so it is cut to this month's length (a 31-day October
+    // next to a 30-day November would otherwise stretch the axis to "31").
+    val previous = remember(data, month) { Reports.cumulative(data, month.minusMonths(1)).take(days) }
+    val planned = remember(data, month) { Calc.summary(data, month).plannedSpending }
     val planLine = (1..days).map { planned * it / days }
     val thisColor = seriesColor(0)
     val lastColor = chartMuted()

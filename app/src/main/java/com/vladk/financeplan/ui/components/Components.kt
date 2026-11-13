@@ -252,6 +252,7 @@ fun TextInput(
     modifier: Modifier = Modifier,
     error: String? = null,
     singleLine: Boolean = true,
+    imeAction: ImeAction = ImeAction.Next,
 ) {
     OutlinedTextField(
         value = value,
@@ -260,7 +261,11 @@ fun TextInput(
         isError = error != null,
         supportingText = error?.let { { Text(it) } },
         singleLine = singleLine,
-        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.Sentences,
+            // A multi-line field keeps the Enter key for new lines.
+            imeAction = if (singleLine) imeAction else ImeAction.Default,
+        ),
         modifier = modifier.fillMaxWidth(),
     )
 }

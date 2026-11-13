@@ -117,6 +117,7 @@ fun BarChart(
     val muted = chartMuted()
     val grid = chartGrid()
     val ink = MaterialTheme.colorScheme.onSurface
+    val backing = MaterialTheme.colorScheme.surfaceContainerLow
     val axisStyle = MaterialTheme.typography.labelSmall.copy(color = muted)
     val strongAxis = axisStyle.copy(color = ink, fontWeight = FontWeight.Bold)
     val valueStyle = MaterialTheme.typography.labelMedium.copy(color = ink, fontWeight = FontWeight.SemiBold)
@@ -189,7 +190,17 @@ fun BarChart(
             val layout = tm.measure(format(values[i]), valueStyle)
             val cx = left + slot * i + slot / 2
             val x = (cx - layout.size.width / 2).coerceIn(left, size.width - layout.size.width)
-            drawText(layout, topLeft = Offset(x, y(values[i]) - layout.size.height - 3.dp.toPx()))
+            val ty = y(values[i]) - layout.size.height - 3.dp.toPx()
+            // A patch of the card colour behind the label keeps it readable where it crosses
+            // a gridline or the dashed guide.
+            val pad = 3.dp.toPx()
+            drawRoundRect(
+                backing,
+                topLeft = Offset(x - pad, ty),
+                size = Size(layout.size.width + 2 * pad, layout.size.height.toFloat()),
+                cornerRadius = CornerRadius(pad),
+            )
+            drawText(layout, topLeft = Offset(x, ty))
         }
     }
 }

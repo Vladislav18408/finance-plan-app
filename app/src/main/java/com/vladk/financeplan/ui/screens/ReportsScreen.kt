@@ -152,7 +152,7 @@ private fun WeeklyReport(
 ) {
     val s = LocalStrings.current
     val fmt = LocalFmt.current
-    val r = Reports.week(data, weekStart)
+    val r = remember(data, weekStart) { Reports.week(data, weekStart) }
     val today = LocalDate.now()
     val todayIndex = r.days.indexOf(today).takeIf { it >= 0 }
     var selectedDay by remember(weekStart) { mutableStateOf<Int?>(null) }
@@ -250,8 +250,7 @@ private fun WeeklyReport(
                     val c = byId[e.categoryId]
                     ListRow(
                         title = c.title(),
-                        subtitle = listOf(fmt.weekdayShort(LocalDate.parse(e.date)) + " " + fmt.dayMonth(LocalDate.parse(e.date)), e.note)
-                            .filter { it.isNotBlank() }.joinToString(" · "),
+                        subtitle = listOf(fmt.weekdayAndDate(e.date), e.note).filter { it.isNotBlank() }.joinToString(" · "),
                         value = fmt.money(e.amount),
                         onClick = { onEditExpense(e) },
                         leading = { CategoryAvatar(c) },
@@ -382,13 +381,24 @@ private fun MonthlyReport(data: AppData, month: YearMonth, onMonthChange: (YearM
 // ------------------------------------------------------------------ Trends (6 months)
 
 @Composable
+private fun AverageNote() {
+    Text(
+        LocalStrings.current.completedMonthsOnly,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
 private fun TrendsReport(data: AppData, month: YearMonth, onMonthChange: (YearMonth) -> Unit) {
     val s = LocalStrings.current
     val fmt = LocalFmt.current
-    val totals = Reports.monthTotals(data, month, 6)
-    // Averages start at the first month that has any data, so empty months before the app was used don't pull them down.
-    val counted = totals.indexOfFirst { it.spent > 0 || it.saved > 0 }.let { if (it < 0) totals else totals.drop(it) }
-    val planned = Calc.summary(data, month).plannedSpending
+    val totals = remember(data, month) { Reports.monthTotals(data, month, 6) }
+    // Averages start at the first month that has any data and leave out the month still in
+    // progress, so neither empty months nor a half-finished one pull them down.
+    val counted = Reports.averagedMonths(totals)
+    val currentLeftOut = totals.any { it.month == YearMonth.now() } && counted.none { it.month == YearMonth.now() }
+    val planned = remember(data, month) { Calc.summary(data, month).plannedSpending }
     var selSpent by remember(month) { mutableStateOf<Int?>(null) }
     var selSaved by remember(month) { mutableStateOf<Int?>(null) }
 
@@ -411,6 +421,7 @@ private fun TrendsReport(data: AppData, month: YearMonth, onMonthChange: (YearMo
                 )
                 HorizontalDivider(Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 ValueRow(s.averagePerMonth, fmt.money(counted.sumOf { it.spent } / counted.size), strong = true)
+                if (currentLeftOut) AverageNote()
             }
         }
 
@@ -428,13 +439,14 @@ private fun TrendsReport(data: AppData, month: YearMonth, onMonthChange: (YearMo
                 )
                 HorizontalDivider(Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 ValueRow(s.averagePerMonth, fmt.money(counted.sumOf { it.saved } / counted.size), strong = true)
+                if (currentLeftOut) AverageNote()
             }
         }
 
-        // Average per month for each category over the same six months.
+        // Average per month for each category over the same months.
         item {
             val from = counted.first().month.atDay(1)
-            val to = totals.last().month.atEndOfMonth()
+            val to = counted.last().month.atEndOfMonth()
             val spend = Reports.spending(data, Reports.between(data, from, to))
             val cats = Reports.byCategory(data, spend).take(10)
             SectionCard(title = "${s.byCategory} · ${s.averagePerMonth}") {

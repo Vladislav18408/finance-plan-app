@@ -29,11 +29,14 @@ object Reports {
 
     fun weekStart(date: LocalDate): LocalDate = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
 
-    private fun parse(e: Expense): LocalDate? = runCatching { LocalDate.parse(e.date) }.getOrNull()
-
-    fun between(data: AppData, from: LocalDate, to: LocalDate): List<Expense> = data.expenses.filter { e ->
-        val d = parse(e) ?: return@filter false
-        !d.isBefore(from) && !d.isAfter(to)
+    /**
+     * Expenses dated [from]..[to], both included. Stored dates are always ISO "yyyy-MM-dd"
+     * (see [Backup.clean]), and those sort the same way as text, so no date parsing is needed.
+     */
+    fun between(data: AppData, from: LocalDate, to: LocalDate): List<Expense> {
+        val a = from.toString()
+        val b = to.toString()
+        return data.expenses.filter { it.date >= a && it.date <= b }
     }
 
     private fun categories(data: AppData) = data.categories.associateBy { it.id }
@@ -51,15 +54,22 @@ object Reports {
         return list.filter { isSaving(it, cats) }
     }
 
+    /**
+     * Newest first. Expenses of the same day keep the order they were added in, latest on top,
+     * so the thing you just typed in is the first row.
+     */
+    fun newestFirst(list: List<Expense>): List<Expense> = list.asReversed().sortedByDescending { it.date }
+
     /** Planned needs + wants per month, as a weekly amount (a month is 52/12 ≈ 4.33 weeks). */
     fun weeklyGuide(data: AppData): Double =
-        Calc.summary(data, YearMonth.now()).plannedSpending * 12.0 / 52.0
+        data.categories.filterNot { it.kind.isSaving }.sumOf { Calc.planned(it, data.income) } * 12.0 / 52.0
 
     fun week(data: AppData, start: LocalDate): WeekReport {
         val days = (0L..6L).map { start.plusDays(it) }
         val all = between(data, start, days.last())
         val spend = spending(data, all)
-        val byDay = days.map { d -> spend.filter { it.date == d.toString() }.sumOf { it.amount } }
+        val perDay = spend.groupBy { it.date }
+        val byDay = days.map { d -> perDay[d.toString()]?.sumOf { it.amount } ?: 0.0 }
         val previous = spending(data, between(data, start.minusDays(7), start.minusDays(1))).sumOf { it.amount }
         return WeekReport(
             start = start,
@@ -69,7 +79,7 @@ object Reports {
             saved = saving(data, all).sumOf { it.amount },
             previousSpent = previous,
             guide = weeklyGuide(data),
-            expenses = all.sortedByDescending { it.date },
+            expenses = newestFirst(all),
             byCategory = byCategory(data, spend),
         )
     }
@@ -97,14 +107,14 @@ object Reports {
      * current month, so the line stops at today.
      */
     fun cumulative(data: AppData, month: YearMonth, today: LocalDate = LocalDate.now()): List<Double?> {
-        val spend = spending(data, monthExpenses(data, month))
+        val perDay = spending(data, monthExpenses(data, month)).groupBy { it.date }
         var running = 0.0
         return (1..month.lengthOfMonth()).map { day ->
             val date = month.atDay(day)
             if (date.isAfter(today)) {
                 null
             } else {
-                running += spend.filter { it.date == date.toString() }.sumOf { it.amount }
+                running += perDay[date.toString()]?.sumOf { it.amount } ?: 0.0
                 running
             }
         }
@@ -117,6 +127,17 @@ object Reports {
             val list = monthExpenses(data, m)
             MonthTotal(m, spending(data, list).sumOf { it.amount }, saving(data, list).sumOf { it.amount })
         }
+
+    /**
+     * The months an "average per month" is taken over: from the first month with any data, and
+     * without the month that is still in progress – a half-finished month would pull the average
+     * down. While the current month is the only one with data, it is used as it is.
+     */
+    fun averagedMonths(totals: List<MonthTotal>, current: YearMonth = YearMonth.now()): List<MonthTotal> {
+        val first = totals.indexOfFirst { it.spent > 0 || it.saved > 0 }
+        val withData = if (first < 0) totals else totals.drop(first)
+        return withData.filter { it.month < current }.ifEmpty { withData }
+    }
 
     fun totalIncome(data: AppData) = data.income.salary + Calc.extrasTotal(data.income)
 }

@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#1E6B52</color>
+    <!-- Same as the app's background in ui/theme/Theme.kt, so the start-up screen does not flash. -->
+    <color name="app_background">#F6FBF6</color>
 </resources>

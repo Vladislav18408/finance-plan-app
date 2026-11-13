@@ -59,6 +59,17 @@ class Fmt(private val strings: Strings, private val currency: String) {
 
     fun dayMonth(date: LocalDate): String = date.format(DateTimeFormatter.ofPattern("d MMM", locale))
 
+    // The same for a stored "yyyy-MM-dd" date. Text that is not a date is shown as it is,
+    // so one odd entry can never crash a whole screen.
+    private fun parse(iso: String): LocalDate? = runCatching { LocalDate.parse(iso) }.getOrNull()
+
+    fun day(iso: String): String = parse(iso)?.let { day(it) } ?: iso
+    fun shortDate(iso: String): String = parse(iso)?.let { shortDate(it) } ?: iso
+    fun dayMonth(iso: String): String = parse(iso)?.let { dayMonth(it) } ?: iso
+
+    /** "Чт 12 ное" */
+    fun weekdayAndDate(iso: String): String = parse(iso)?.let { "${weekdayShort(it)} ${dayMonth(it)}" } ?: iso
+
     /** "6 – 12 окт 2026" (or "29 сеп – 5 окт 2026" when the week spans two months). */
     fun weekRange(start: LocalDate): String {
         val end = start.plusDays(6)

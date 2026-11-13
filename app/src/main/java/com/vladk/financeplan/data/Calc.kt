@@ -1,9 +1,11 @@
 package com.vladk.financeplan.data
 
+import java.time.LocalDate
 import java.time.YearMonth
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.pow
+import kotlin.math.roundToLong
 
 enum class Status { NO_DATA, WITHIN_PLAN, OVER_BUDGET, GOAL_REACHED, BELOW_GOAL }
 
@@ -33,6 +35,8 @@ data class MonthSummary(
     val plannedTotal get() = plannedByKind.values.sum()
 }
 
+data class DailyAllowance(val perDay: Double, val daysLeft: Int)
+
 data class RuleRow(val label: Kind, val rulePercent: Double, val plannedPercent: Double, val actualPercent: Double)
 
 data class ProjectionRow(val years: Int, val age: Int?, val contributed: Double, val value: Double) {
@@ -57,7 +61,7 @@ object Calc {
 
     fun status(kind: Kind, planned: Double, actual: Double): Status = when {
         actual == 0.0 -> Status.NO_DATA
-        kind.isSaving -> if (actual >= planned) Status.GOAL_REACHED else Status.BELOW_GOAL
+        kind.isSaving -> if (actual >= planned - 0.005) Status.GOAL_REACHED else Status.BELOW_GOAL
         else -> if (actual <= planned + 0.005) Status.WITHIN_PLAN else Status.OVER_BUDGET
     }
 
@@ -77,6 +81,17 @@ object Calc {
     }
 
     fun unallocated(data: AppData, s: MonthSummary) = data.income.salary - s.plannedTotal
+
+    /**
+     * How much can still be spent per day to end the month on plan: what is left of the planned
+     * spending, divided by the days that remain (today included). Null when [month] is not the
+     * current month or nothing is left.
+     */
+    fun dailyAllowance(remaining: Double, month: YearMonth, today: LocalDate = LocalDate.now()): DailyAllowance? {
+        if (YearMonth.from(today) != month || remaining <= 0.0) return null
+        val daysLeft = month.lengthOfMonth() - today.dayOfMonth + 1
+        return DailyAllowance(remaining / daysLeft, daysLeft)
+    }
 
     fun percentOfSalary(data: AppData, value: Double) =
         if (data.income.salary == 0.0) 0.0 else value / data.income.salary * 100.0
@@ -141,17 +156,21 @@ object Calc {
 
     /**
      * Reads an amount the way people type it on a phone: "12,50", "1 250" or a sum like "11.6+4.4+10".
-     * Returns null when the text is not a valid non-negative amount.
+     * Returns null when the text is not a valid non-negative amount. The result is rounded to cents,
+     * so a sum such as 11.6+4.4+10 is stored as exactly 26.
      */
     fun parseAmount(text: String): Double? {
-        val clean = text.replace(" ", "").replace(' ', ' ').replace(" ", "").replace(',', '.')
+        // isWhitespace() also covers the non-breaking spaces that number formatting puts in "1 250".
+        val clean = text.filterNot { it.isWhitespace() }.replace(',', '.')
         if (clean.isEmpty()) return null
-        val parts = clean.split('+')
         var total = 0.0
-        for (p in parts) {
-            if (p.isEmpty()) return null
-            total += p.toDoubleOrNull()?.takeIf { it >= 0 } ?: return null
+        for (p in clean.split('+')) {
+            // Digits with at most one decimal point – no "1e5", "NaN" or "Infinity".
+            if (!NUMBER.matches(p)) return null
+            total += p.toDoubleOrNull() ?: return null
         }
-        return total
+        return if (total.isFinite() && total < 1e12) (total * 100).roundToLong() / 100.0 else null
     }
+
+    private val NUMBER = Regex("""\d+(\.\d*)?|\.\d+""")
 }
